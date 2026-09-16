@@ -28,6 +28,8 @@ export default function App() {
   const [fechaUltimoPago, setFechaUltimoPago] = useState<string>(hoyStr)
   const [periodoPagado, setPeriodoPagado] = useState<string>('')
   const [bancoPagadoCon, setBancoPagadoCon] = useState<string>('')
+  const [fechaIngresoEmpleado, setFechaIngresoEmpleado] = useState<string>('')
+  const [usarFechaIngresoManual, setUsarFechaIngresoManual] = useState<boolean>(false)
 
   // Estados para el Modal del CUIT (Solución al prompt de Electron)
   const [mostrarModalCuit, setMostrarModalCuit] = useState<boolean>(false)
@@ -211,7 +213,15 @@ export default function App() {
 
     const recibosParaArca: ReciboArca[] = legajosConMovimientos.map(legajo => {
       const emp = empleados.find(e => String(e.EM_CODIGO).trim() === legajo);
-      const datosProcesados = procesarLiquidacionEmpleado(movimientos, legajo, conceptosMap);
+      const datosProcesados = procesarLiquidacionEmpleado(
+        movimientos,
+        legajo,
+        conceptosMap,
+        emp,
+        liquidacionActual?.IN_FECHA || new Date(),
+        fechaIngresoEmpleado,
+        usarFechaIngresoManual
+      );
       
       return {
         cuil: emp?.EM_CUIL || '',
@@ -277,12 +287,20 @@ export default function App() {
     return fechaIso
   }
 
-  const datosRecibo = legajoSeleccionado && movimientos.length > 0
-    ? procesarLiquidacionEmpleado(movimientos, legajoSeleccionado, conceptosMap)
-    : null
+const empleadoActual = empleados.find((e) => String(Number(e.EM_CODIGO)) === String(Number(legajoSeleccionado)))
+const liquidacionActual = liquidaciones.find((l) => l.IN_IDENTIF === idLiqSeleccionada)
 
-  const empleadoActual = empleados.find((e) => String(Number(e.EM_CODIGO)) === String(Number(legajoSeleccionado)))
-  const liquidacionActual = liquidaciones.find((l) => l.IN_IDENTIF === idLiqSeleccionada)
+const datosRecibo = legajoSeleccionado && movimientos.length > 0
+  ? procesarLiquidacionEmpleado(
+      movimientos,
+      legajoSeleccionado,
+      conceptosMap,
+      empleadoActual,
+      liquidacionActual?.IN_FECHA || new Date(),
+      fechaIngresoEmpleado,
+      usarFechaIngresoManual
+    )
+  : null
   
   // Calculamos el CUIT para mostrarlo en el header (Usa el manual si lo llenaron)
   const cuitBaseHeader = empresa?.EM_CUIT || empresa?.CUIT || empresa?.PR_CUIT || empresa?.EMP_CUIT || empresa?.EM_RUT || empresa?.EM_NROCUI || empresa?.EM_IDENTIF;
@@ -438,6 +456,26 @@ export default function App() {
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Fecha de Ingreso del Empleado</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={usarFechaIngresoManual}
+                  onChange={(e) => setUsarFechaIngresoManual(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                />
+                <span className="text-[11px] text-slate-300">Tildar si utiliza fecha de ingreso en el recibo (Antigüedad)</span>
+              </div>
+              <input
+                type="date"
+                value={fechaIngresoEmpleado}
+                onChange={(e) => setFechaIngresoEmpleado(e.target.value)}
+                disabled={!usarFechaIngresoManual || !!procesandoLote}
+                className="mt-2 w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
+              />
+            </div>
           </div>
 
           <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
@@ -558,6 +596,8 @@ export default function App() {
                 liquidacion={liquidacionActual}
                 datos={datosRecibo}
                 datosDeposito={datosDepositoObj}
+                fechaIngresoManual={fechaIngresoEmpleado}
+                usarFechaIngresoManual={usarFechaIngresoManual}
               />
             </div>
           )}

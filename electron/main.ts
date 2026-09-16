@@ -20,12 +20,13 @@ function createWindow() {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      devTools: isDev
+      devTools: true
     },
   })
 
   win.setMenu(null)
 
+  // Abrir DevTools solo en desarrollo para debugging
   if (isDev) {
     win.webContents.openDevTools()
     win.loadURL(process.env.VITE_DEV_SERVER_URL)
