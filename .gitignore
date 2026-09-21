@@ -27,6 +27,9 @@ node_modules/
 dist/
 dist-electron/
 release/
+release-final/
+release-final-2/
+release-new/
 .env
 
 # Ignorar la carpeta donde pusiste los DBF de Amiplast/Frutos

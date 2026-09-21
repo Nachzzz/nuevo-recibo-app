@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { procesarLiquidacionEmpleado } from './utils/reciboMapper'
+import { formatearFechaVisual as formatearFechaDBFVisual, procesarLiquidacionEmpleado } from './utils/reciboMapper'
 import { ReciboImprimible, DatosDepositoSocial } from './components/ReciboImprimible'
 import { generarArchivoARCA, descargarTxtLSD, ReciboArca } from '../src/utils/arcaExporter'
 
@@ -30,6 +30,7 @@ export default function App() {
   const [bancoPagadoCon, setBancoPagadoCon] = useState<string>('')
   const [fechaIngresoEmpleado, setFechaIngresoEmpleado] = useState<string>('')
   const [usarFechaIngresoManual, setUsarFechaIngresoManual] = useState<boolean>(false)
+  const [mostrarCodigo, setMostrarCodigo] = useState<boolean>(true)
 
   // Estados para el Modal del CUIT (Solución al prompt de Electron)
   const [mostrarModalCuit, setMostrarModalCuit] = useState<boolean>(false)
@@ -63,6 +64,23 @@ export default function App() {
       if (res.exito) {
         const empresaData = res.empresa ? { ...res.empresa } : {}
 
+        const normalizarCodigo = (valor: any) => {
+          const texto = String(valor ?? '').trim()
+          const numerico = Number(texto)
+          return texto && Number.isFinite(numerico) ? String(numerico) : texto
+        }
+
+        const categoriasMap: Record<string, string> = {}
+        ;(res.categorias || []).forEach((categoria: any) => {
+          const claveCodigo = Object.keys(categoria).find((clave) => /^ca.*cod/i.test(clave))
+          const claveNombre = Object.keys(categoria).find((clave) => /^ca.*(descr|descrip|nombre)/i.test(clave))
+          const codigo = (claveCodigo ? categoria[claveCodigo] : undefined) ?? categoria.CATEGORIA ?? categoria.CODIGO
+          const nombre = (claveNombre ? categoria[claveNombre] : undefined) ?? categoria.DESCRIP ?? categoria.NOMBRE
+          if (codigo !== undefined && nombre) {
+            categoriasMap[normalizarCodigo(codigo)] = String(nombre).trim()
+          }
+        })
+
         if (empresaData.PR_CODIGO && res.provincias && res.provincias.length > 0) {
           const provMatch = res.provincias.find(
             (p: any) => String(p.PR_CODIGO).trim() === String(empresaData.PR_CODIGO).trim()
@@ -79,7 +97,26 @@ export default function App() {
           return Number(b.IN_IDENTIF || 0) - Number(a.IN_IDENTIF || 0)
         })
 
-        const empleadosOrdenados = (res.empleados || []).slice().sort((a: any, b: any) => {
+        const empleadosConCategoria = (res.empleados || []).map((empleado: any) => {
+          const clavesCodigoCategoria = ['TCA_CODIGO', 'EM_AF_CA', 'EM_CACOD', 'EM_CACODIGO', 'EM_CA_COD', 'EM_CA_CODIGO', 'EM_CODCAT', 'EM_CODCATEG', 'EM_CODCATEGORIA', 'EM_CATEG', 'EM_CATEGO', 'EM_CATEGORIA', 'EM_CATEGOR']
+          const claveCodigoCategoria = clavesCodigoCategoria.find((clave) => {
+            return Object.prototype.hasOwnProperty.call(empleado, clave) && categoriasMap[normalizarCodigo(empleado[clave])] !== undefined
+          })
+          const claveCoincidente = claveCodigoCategoria || Object.keys(empleado).find((clave) => {
+            if (/legajo|cuil|dni|importe|sueldo|haber|descuento|fecha/i.test(clave)) return false
+            return categoriasMap[normalizarCodigo(empleado[clave])] !== undefined
+          })
+          const codigoCategoria = claveCoincidente ? empleado[claveCoincidente] : undefined
+          const nombreCategoria = categoriasMap[normalizarCodigo(codigoCategoria)] || empleado.CATEGORIA_NOMBRE
+          return {
+            ...empleado,
+            CATEGORIA_CODIGO: codigoCategoria ?? empleado.CATEGORIA_CODIGO ?? '',
+            CATEGORIA_CAMPO: claveCoincidente || '',
+            CATEGORIA_NOMBRE: nombreCategoria || ''
+          }
+        })
+
+        const empleadosOrdenados = empleadosConCategoria.slice().sort((a: any, b: any) => {
           const apeA = String(a.EM_APE1 || '').trim().toLowerCase()
           const apeB = String(b.EM_APE1 || '').trim().toLowerCase()
           return apeA.localeCompare(apeB)
@@ -91,6 +128,17 @@ export default function App() {
         setLiquidaciones(liquidacionesOrdenadas)
         setEmpleados(empleadosOrdenados)
         setBancosDisponibles(bancosParsed)
+        const clavesEmpleado = Array.from(new Set(empleadosOrdenados.flatMap((empleado: any) => Object.keys(empleado))))
+        const clavesCategoria = clavesEmpleado.filter((clave) => /categor|cat|puesto|cargo|escala/i.test(clave))
+        console.debug('[DBF] Claves de empleado relacionadas con categoría:', clavesCategoria)
+        console.debug('[DBF] Categorías cargadas:', categoriasMap)
+        console.debug('[DBF] Estructura de categori.dbf:', res.categorias?.[0] ? Object.keys(res.categorias[0]) : [])
+        console.debug('[DBF] Muestra de datos de categoría:', empleadosOrdenados.slice(0, 5).map((empleado: any) => {
+          const datosCategoria: Record<string, any> = {}
+          clavesCategoria.forEach((clave) => { datosCategoria[clave] = empleado[clave] })
+          return { legajo: empleado.EM_CODIGO, campoUsado: empleado.CATEGORIA_CAMPO, codigoCategoria: empleado.CATEGORIA_CODIGO, categoria: empleado.CATEGORIA_NOMBRE, datosCategoria }
+        }))
+        console.debug('[DBF] Claves de liquidación:', liquidacionesOrdenadas[0] ? Object.keys(liquidacionesOrdenadas[0]) : [])
         if (bancosParsed.length > 0) setBancoPagadoCon(bancosParsed[0].valor)
 
         if (res.conceptos && res.conceptos.length > 0) {
@@ -307,7 +355,8 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
   const cuitEmpresaVisual = cuitBaseHeader ? cuitBaseHeader : (cuitManual || 'S/D');
 
   const datosDepositoObj: DatosDepositoSocial = {
-    fechaPago: formatearFechaVisual(fechaUltimoPago),
+    fechaPagoSueldo: formatearFechaDBFVisual(liquidacionActual?.IN_FECHA),
+    fechaUltimoPago: formatearFechaVisual(fechaUltimoPago),
     periodoPagado: periodoPagado,
     banco: bancoPagadoCon
   }
@@ -422,7 +471,7 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
 
       {rutaCarpeta && (
         <div className="space-y-4 mb-6 print:hidden">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1">Liquidación (Periodo)</label>
               <select
@@ -475,6 +524,20 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
                 disabled={!usarFechaIngresoManual || !!procesandoLote}
                 className="mt-2 w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">Diseño del recibo</label>
+              <label className="flex items-center gap-2 mt-3 text-[11px] text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={mostrarCodigo}
+                  onChange={(e) => setMostrarCodigo(e.target.checked)}
+                  disabled={!!procesandoLote}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500"
+                />
+                Mostrar columna Código
+              </label>
             </div>
           </div>
 
@@ -598,6 +661,7 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
                 datosDeposito={datosDepositoObj}
                 fechaIngresoManual={fechaIngresoEmpleado}
                 usarFechaIngresoManual={usarFechaIngresoManual}
+                mostrarCodigo={mostrarCodigo}
               />
             </div>
           )}

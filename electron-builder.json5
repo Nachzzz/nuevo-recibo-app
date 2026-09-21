@@ -24,10 +24,14 @@
     "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "nsis": {
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "Recibos Memory"
+  },
+  "portable": {
+    "artifactName": "${productName}-Portable-${version}.${ext}"
   }
 }

@@ -5,7 +5,7 @@
   "type": "module",
 "scripts": {
     "predev": "esbuild electron/main.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist-electron/main.cjs --external:electron && esbuild electron/preload.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist-electron/preload.cjs --external:electron",
-    "dev": "concurrently \"vite\" \"electron .\"",
+    "dev": "vite",
     "build": "tsc && vite build && esbuild electron/main.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist-electron/main.cjs --external:electron && esbuild electron/preload.ts --bundle --platform=node --target=node16 --format=cjs --outfile=dist-electron/preload.cjs --external:electron && electron-builder --win nsis portable",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"

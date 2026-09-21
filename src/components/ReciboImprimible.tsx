@@ -2,7 +2,8 @@ import { DatosReciboProcesados, formatearFechaVisual } from '../utils/reciboMapp
 import { numeroALetras } from '../utils/numeroALetras'
 
 export interface DatosDepositoSocial {
-  fechaPago: string
+  fechaPagoSueldo: string
+  fechaUltimoPago: string
   periodoPagado: string
   banco: string
 }
@@ -15,10 +16,18 @@ interface Props {
   datosDeposito?: DatosDepositoSocial
   fechaIngresoManual?: string
   usarFechaIngresoManual?: boolean
+  mostrarCodigo?: boolean
 }
 
 const fmt = (valor: number) =>
   valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const formatearCantidad = (valor: number) =>
+  valor > 0
+    ? Number.isInteger(valor)
+      ? valor.toLocaleString('es-AR')
+      : `${(valor * 100).toLocaleString('es-AR', { maximumFractionDigits: 2 })}%`
+    : '-'
 
 function detectarCuitEmpresa(empresa: any): string {
   if (!empresa) return 'S/D'
@@ -78,14 +87,17 @@ function obtenerDomicilioFiscalEmpresa(empresa: any) {
 }
 
 // --- Generador Matemático del Gráfico SVG Mejorado ---
-function GraficoCargasSVG({ pSegSoc, pOS, pINSSJP }: { pSegSoc: number, pOS: number, pINSSJP: number }) {
-  const pOtros = Math.max(0, 100 - pSegSoc - pOS - pINSSJP)
-  const data = [
-    { name: 'Seg. Soc.', value: pSegSoc, color: '#0284c7' }, // Azul
-    { name: 'O. Social', value: pOS, color: '#ea580c' },      // Naranja
-    { name: 'PAMI', value: pINSSJP, color: '#16a34a' },       // Verde
-    { name: 'Otros', value: pOtros, color: '#dc2626' }        // Rojo
-  ].filter(d => d.value > 0)
+function GraficoCargasSVG({ sueldoNeto, seguridadSocialEmpleador, costoSindical, obraSocial }: { sueldoNeto: number, seguridadSocialEmpleador: number, costoSindical: number, obraSocial: number }) {
+  const importes = [
+    { name: 'Sueldo Neto', importe: sueldoNeto, color: '#4f81bd' },
+    { name: 'Seg. Social Empl.', importe: seguridadSocialEmpleador, color: '#c0504d' },
+    { name: 'Costo Sindical', importe: costoSindical, color: '#9bbb59' },
+    { name: 'Obra Social', importe: obraSocial, color: '#8064a2' },
+  ]
+  const totalImportes = importes.reduce((total, item) => total + Math.max(0, item.importe), 0)
+  const data = importes
+    .map(item => ({ ...item, value: totalImportes > 0 ? (Math.max(0, item.importe) / totalImportes) * 100 : 0 }))
+    .filter(item => item.value > 0)
 
   // Tamaño aumentado a 145px
   const size = 145 
@@ -99,15 +111,24 @@ function GraficoCargasSVG({ pSegSoc, pOS, pINSSJP }: { pSegSoc: number, pOS: num
   }
 
   return (
-    <svg
-      viewBox={`0 0 ${size} ${size}`}
-      width={size}
-      height={size}
-      style={{ transform: 'rotate(-90deg)', margin: '0 auto', display: 'block' }}
-      className="drop-shadow-sm"
-    >
-      {data.map(slice => {
-        if (slice.value >= 100) {
+    <div className="flex flex-col items-center gap-1">
+      <div className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-[7px] leading-tight">
+        {importes.map(item => (
+          <span key={item.name} className="inline-flex items-center gap-0.5 whitespace-nowrap">
+            <span className="inline-block h-1.5 w-1.5" style={{ backgroundColor: item.color }} />
+            {item.name}
+          </span>
+        ))}
+      </div>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        width={size}
+        height={size}
+        style={{ transform: 'rotate(-90deg)', margin: '0 auto', display: 'block' }}
+        className="drop-shadow-sm"
+      >
+        {data.map(slice => {
+        if (slice.value >= 99.999) {
           return (
             <g key={slice.name}>
               <circle cx={radius} cy={radius} r={radius} fill={slice.color} />
@@ -169,13 +190,14 @@ function GraficoCargasSVG({ pSegSoc, pOS, pINSSJP }: { pSegSoc: number, pOS: num
             )}
           </g>
         )
-      })}
-    </svg>
+        })}
+      </svg>
+    </div>
   )
 }
 // -----------------------------------------------------------
 
-export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosDeposito, fechaIngresoManual, usarFechaIngresoManual = false }: Props) {
+export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosDeposito, fechaIngresoManual, usarFechaIngresoManual = false, mostrarCodigo = true }: Props) {
   const nombreEmpresa = String(empresa?.EM_NOMBRE || '').trim()
   const cuitEmpresa = detectarCuitEmpresa(empresa)
   const { direccion, cp, partido, provincia } = obtenerDomicilioFiscalEmpresa(empresa)
@@ -185,6 +207,11 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
   const nombreEmpleado = `${ape}, ${nom}`
   const cuilEmpleado = empleado?.EM_CUIL || 'S/D'
   const legajo = String(empleado?.EM_CODIGO || '').trim()
+  const categoriaEmpleado = String(
+    empleado?.CATEGORIA_NOMBRE ||
+    empleado?.EM_CATEGORIA || empleado?.EM_CATEGOR || empleado?.EM_CATEG ||
+    empleado?.EM_DESCCAT || empleado?.EM_CODCAT || empleado?.EM_CODCATE || ''
+  ).trim() || 'S/D'
 
   const rawIngreso = usarFechaIngresoManual ? (fechaIngresoManual || '') : ''
   const rawReconocida = usarFechaIngresoManual ? (fechaIngresoManual || '') : ''
@@ -195,19 +222,49 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
   const letras = numeroALetras(datos.netoAPercibir)
   const letrasFormateadas = letras.charAt(0).toUpperCase() + letras.slice(1)
 
-  const totalCargas =
-    datos.cargasSociales.seguridadSocial.total +
-    datos.cargasSociales.obraSocial.total +
-    datos.cargasSociales.inssjp.total +
-    datos.cargasSociales.art.total +
-    datos.cargasSociales.scvo.total
+  const sueldoNeto = datos.netoAPercibir
+  const seguridadSocialEmpleador = datos.cargasSociales.seguridadSocial.empleador
+  const costoSindical = datos.cuotaSindicato
+  const obraSocial = datos.cargasSociales.obraSocial.total
 
-  const pSegSoc = totalCargas > 0 ? (datos.cargasSociales.seguridadSocial.total / totalCargas) * 100 : 0
-  const pOS = totalCargas > 0 ? (datos.cargasSociales.obraSocial.total / totalCargas) * 100 : 0
-  const pINSSJP = totalCargas > 0 ? (datos.cargasSociales.inssjp.total / totalCargas) * 100 : 0
+  console.debug('[RECIBO] Valores para gráfico de composición:', {
+    legajo,
+    sueldoNeto,
+    seguridadSocialEmpleador,
+    costoSindical,
+    obraSocial,
+  })
 
   // Cálculo de la cuota sindical del 2% sobre el total de haberes brutos
   const cuotaSindicato = datos.cuotaSindicato
+
+  const haberesRemunerativos = datos.haberes.filter((concepto) => {
+    const codigo = Number(concepto.codigo)
+    return codigo < 2200 || codigo > 2299
+  })
+  const haberesNoRemunerativos = datos.haberes.filter((concepto) => {
+    const codigo = Number(concepto.codigo)
+    return codigo >= 2200 && codigo <= 2299
+  })
+
+  const renderFilaConcepto = (concepto: typeof datos.haberes[number], indice: number, esDescuento = false) => (
+    <tr key={`${esDescuento ? 'd' : 'h'}-${indice}`}>
+      {mostrarCodigo && <td className="p-1 font-mono text-center text-gray-600 border-r border-gray-200">{concepto.codigo}</td>}
+      <td className="p-1 border-r border-gray-200">
+        {concepto.descripcion.split('\n').map((linea, indiceLinea) => (
+          <span
+            key={indiceLinea}
+            className={indiceLinea === 1 ? "block text-[10px] font-bold mt-0.5" : "block"}
+          >
+            {linea}
+          </span>
+        ))}
+      </td>
+      <td className="p-1 text-right font-mono border-r border-gray-200">{formatearCantidad(concepto.cantidad)}</td>
+      <td className="p-1 text-right font-mono text-gray-400 border-r border-gray-200">{esDescuento ? '-' : `$${fmt(concepto.total)}`}</td>
+      <td className="p-1 text-right font-mono font-medium">{esDescuento ? `$${fmt(concepto.total)}` : '-'}</td>
+    </tr>
+  )
 
   return (
     <div
@@ -289,14 +346,14 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
                 <span className="font-semibold">{liquidacion?.IN_ABREVIA || '-'}</span>
               </td>
               <td className="p-1.5 align-top" colSpan={2}>
-                <span className="block text-[8px] text-gray-500 uppercase font-bold">Banco / Pago</span>
-                <span className="font-semibold">{String(empleado?.EM_BANCO || 'BANCO').trim()}</span>
+                <span className="block text-[8px] text-gray-500 uppercase font-bold">Categoría</span>
+                <span className="font-semibold">{categoriaEmpleado}</span>
               </td>
             </tr>
             <tr className="bg-gray-50/70">
               <td className="p-1.5 border-r border-gray-300 align-top">
                 <span className="block text-[8px] text-gray-600 uppercase font-bold">Último Pago Cargas Sociales</span>
-                <span className="font-medium text-[10px]">{datosDeposito?.fechaPago || '-'}</span>
+                <span className="font-medium text-[10px]">{datosDeposito?.fechaUltimoPago || '-'}</span>
               </td>
               <td className="p-1.5 border-r border-gray-300 align-top">
                 <span className="block text-[8px] text-gray-600 uppercase font-bold">Período Depositado</span>
@@ -315,47 +372,26 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
         <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
           <thead>
             <tr className="border-b border-black bg-gray-100 text-[10px]">
-              <th className="p-1.5 text-center border-r border-gray-300" style={{ width: '12%' }}>Cód.</th>
-              <th className="p-1.5 text-left border-r border-gray-300" style={{ width: '52%' }}>Concepto</th>
+              {mostrarCodigo && <th className="p-1.5 text-center border-r border-gray-300" style={{ width: '12%' }}>Código</th>}
+              <th className="p-1.5 text-left border-r border-gray-300" style={{ width: mostrarCodigo ? '42%' : '54%' }}>Concepto</th>
+              <th className="p-1.5 text-right border-r border-gray-300" style={{ width: '10%' }}>Unidades</th>
               <th className="p-1.5 text-right border-r border-gray-300" style={{ width: '18%' }}>Haberes</th>
               <th className="p-1.5 text-right" style={{ width: '18%' }}>Descuentos</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 text-[11px]">
-            {datos.haberes.map((h, i) => (
-              <tr key={`h-${i}`}>
-                <td className="p-1 font-mono text-center text-gray-600 border-r border-gray-200">{h.codigo}</td>
-                <td className="p-1 border-r border-gray-200">
-                  {h.descripcion.split('\n').map((linea, idx) => (
-                    <span
-                      key={idx}
-                      className={idx === 1 ? "block text-[10px] font-bold mt-0.5" : "block"}
-                    >
-                      {linea}
-                    </span>
-                  ))}
-                </td>
-                <td className="p-1 text-right font-mono font-medium border-r border-gray-200">${fmt(h.total)}</td>
-                <td className="p-1 text-right font-mono text-gray-400">-</td>
-              </tr>
-            ))}
-            {datos.descuentos.map((d, i) => (
-              <tr key={`d-${i}`}>
-                <td className="p-1 font-mono text-center text-gray-600 border-r border-gray-200">{d.codigo}</td>
-                <td className="p-1 border-r border-gray-200">
-                  {d.descripcion.split('\n').map((linea, idx) => (
-                    <span
-                      key={idx}
-                      className={idx === 1 ? "block text-[10px] font-bold mt-0.5" : "block"}
-                    >
-                      {linea}
-                    </span>
-                  ))}
-                </td>
-                <td className="p-1 text-right font-mono text-gray-400 border-r border-gray-200">-</td>
-                <td className="p-1 text-right font-mono font-medium">${fmt(d.total)}</td>
-              </tr>
-            ))}
+            <tr className="bg-gray-100">
+              <td colSpan={mostrarCodigo ? 5 : 4} className="p-1 text-center text-[9px] font-bold uppercase">Remunerativo</td>
+            </tr>
+            {haberesRemunerativos.map((concepto, indice) => renderFilaConcepto(concepto, indice))}
+            <tr className="bg-gray-100">
+              <td colSpan={mostrarCodigo ? 5 : 4} className="p-1 text-center text-[9px] font-bold uppercase">No Remunerativo</td>
+            </tr>
+            {haberesNoRemunerativos.map((concepto, indice) => renderFilaConcepto(concepto, indice))}
+            <tr className="bg-gray-100">
+              <td colSpan={mostrarCodigo ? 5 : 4} className="p-1 text-center text-[9px] font-bold uppercase">Descuentos</td>
+            </tr>
+            {datos.descuentos.map((concepto, indice) => renderFilaConcepto(concepto, indice, true))}
           </tbody>
         </table>
       </div>
@@ -380,6 +416,10 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
 
       <div className="border border-black p-2 mb-2 bg-gray-50 text-[10px]">
         Son: <span className="font-bold">{letrasFormateadas}</span>
+        <div className="mt-1.5 pt-1.5 border-t border-gray-300 flex flex-wrap gap-x-6 gap-y-1">
+          <span><span className="font-bold">Fecha de Pago:</span> {datosDeposito?.fechaPagoSueldo || '-'}</span>
+          <span><span className="font-bold">Lugar de Pago:</span> {datosDeposito?.banco || '-'}</span>
+        </div>
       </div>
 
       <div className="border border-black p-2.5 mb-3">
@@ -413,14 +453,19 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
                 </div>
               </td>
               <td className="text-center align-middle border-l border-gray-300 pl-2 py-1" style={{ width: '35%' }}>
-                <GraficoCargasSVG pSegSoc={pSegSoc} pOS={pOS} pINSSJP={pINSSJP} />
+                <GraficoCargasSVG
+                  sueldoNeto={sueldoNeto}
+                  seguridadSocialEmpleador={seguridadSocialEmpleador}
+                  costoSindical={costoSindical}
+                  obraSocial={obraSocial}
+                />
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <table className="w-full mt-5" style={{ tableLayout: 'fixed' }}>
+      <table className="w-full mt-10" style={{ tableLayout: 'fixed' }}>
         <tbody>
           <tr>
             <td className="text-center align-top p-2" style={{ width: '50%' }}>

@@ -8,6 +8,7 @@ interface Window {
       empresa?: any
       liquidaciones?: any[]
       empleados?: any[]
+      categorias?: any[]
       conceptos?: any[]
       provincias?: any[]
       bancos?: any[]

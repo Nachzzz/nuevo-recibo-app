@@ -140,18 +140,68 @@ ipcMain.handle('dialog:seleccionarCarpeta', async () => {
 
 ipcMain.handle('empresa:cargarDatos', async (_: any, rutaCarpeta: string) => {
   try {
+    const tablasDbf = fs.readdirSync(rutaCarpeta)
+      .filter((archivo: string) => archivo.toLowerCase().endsWith('.dbf'))
+      .sort()
+    const tablasRelevantes = tablasDbf.filter((archivo: string) =>
+      /^(empleado|categori|concepto|liquidac|movimien|empresa|provincia|ctasbanc)\.dbf$/i.test(archivo)
+    )
+    console.debug('[DBF] Tablas relevantes disponibles:', tablasRelevantes)
+
     const empresa = leerTablaSiExiste(rutaCarpeta, 'empresa')
     const liquidaciones = leerTablaSiExiste(rutaCarpeta, 'liquidac')
     const empleados = leerTablaSiExiste(rutaCarpeta, 'empleado')
+    const categorias = leerTablaSiExiste(rutaCarpeta, 'categori')
     const provincias = leerTablaSiExiste(rutaCarpeta, 'provincia')
     const ctasbanc = leerTablaSiExiste(rutaCarpeta, 'ctasbanc')
     const conceptosreales = leerTablaSiExiste(rutaCarpeta, 'concepto')
+
+    console.log('[DBF] Campos de categori.dbf:', categorias[0] ? Object.keys(categorias[0]) : [])
+    console.log('[DBF] Muestra de categori.dbf:', categorias.slice(0, 5))
+    console.log('[DBF] Campos de empleado.dbf:', empleados[0] ? Object.keys(empleados[0]) : [])
+    console.log('[DBF] Muestra de campos de empleado:', empleados.slice(0, 5).map((empleado: any) => {
+      const datosRelacionados: Record<string, any> = {}
+      Object.keys(empleado)
+        .filter((clave) => /cat|cargo|puesto|escala|nivel|conven|tca|af_ca/i.test(clave))
+        .forEach((clave) => { datosRelacionados[clave] = empleado[clave] })
+      return { legajo: empleado.EM_CODIGO, datosRelacionados }
+    }))
+    console.log('[DBF] Valores de categoría por legajo:', empleados.map((empleado: any) => ({
+      legajo: empleado.EM_CODIGO,
+      TCA_CODIGO: empleado.TCA_CODIGO,
+      EM_AF_CA: empleado.EM_AF_CA,
+      EM_CACOD: empleado.EM_CACOD,
+      EM_CODCAT: empleado.EM_CODCAT,
+    })).slice(0, 20))
+
+    const categoriasPorCodigo: Record<string, string> = {}
+    categorias.forEach((categoria: any) => {
+      const codigo = String(categoria.CA_CODIGO ?? '').trim()
+      const nombre = String(categoria.CA_NOMBRE ?? '').trim()
+      if (codigo && nombre) categoriasPorCodigo[codigo] = nombre
+    })
+
+    const empleadosConCategoria = empleados.map((empleado: any) => {
+      const codigoCategoria = empleado.TCA_CODIGO ?? empleado.EM_AF_CA
+      const codigoNormalizado = String(codigoCategoria ?? '').trim()
+      return {
+        ...empleado,
+        CATEGORIA_CODIGO: codigoNormalizado,
+        CATEGORIA_NOMBRE: categoriasPorCodigo[codigoNormalizado] || ''
+      }
+    })
+
+    const empleado74 = empleadosConCategoria.find((empleado: any) => String(empleado.EM_CODIGO).trim() === '74')
+    console.log('[DBF] Categoría legajo 74:', empleado74
+      ? { TCA_CODIGO: empleado74.TCA_CODIGO, CATEGORIA_CODIGO: empleado74.CATEGORIA_CODIGO, CATEGORIA_NOMBRE: empleado74.CATEGORIA_NOMBRE }
+      : 'No encontrado')
 
     return {
       exito: true,
       empresa: empresa[0] || null,
       liquidaciones,
-      empleados,
+      empleados: empleadosConCategoria,
+      categorias,
       conceptos: conceptosreales,
       provincias,
       bancos: ctasbanc
