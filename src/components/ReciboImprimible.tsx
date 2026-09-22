@@ -1,4 +1,4 @@
-import { DatosReciboProcesados, formatearFechaVisual } from '../utils/reciboMapper'
+import { DatosReciboProcesados, esConceptoNoRemunerativo, formatearFechaVisual } from '../utils/reciboMapper'
 import { numeroALetras } from '../utils/numeroALetras'
 
 export interface DatosDepositoSocial {
@@ -100,7 +100,7 @@ function GraficoCargasSVG({ sueldoNeto, seguridadSocialEmpleador, costoSindical,
     .filter(item => item.value > 0)
 
   // Tamaño aumentado a 145px
-  const size = 145 
+  const size = 145
   const radius = size / 2
   let cumulativePercent = 0
 
@@ -128,68 +128,68 @@ function GraficoCargasSVG({ sueldoNeto, seguridadSocialEmpleador, costoSindical,
         className="drop-shadow-sm"
       >
         {data.map(slice => {
-        if (slice.value >= 99.999) {
+          if (slice.value >= 99.999) {
+            return (
+              <g key={slice.name}>
+                <circle cx={radius} cy={radius} r={radius} fill={slice.color} />
+                <text
+                  x={radius}
+                  y={radius}
+                  fill="#000000"
+                  fontSize="11"
+                  fontWeight="900"
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  transform={`rotate(90, ${radius}, ${radius})`}
+                  style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: '3px', strokeLinejoin: 'round' }}
+                >
+                  {slice.name} 100%
+                </text>
+              </g>
+            )
+          }
+
+          const [startX, startY] = getCoords(cumulativePercent / 100)
+          const midPercent = (cumulativePercent + slice.value / 2) / 100
+          cumulativePercent += slice.value
+          const [endX, endY] = getCoords(cumulativePercent / 100)
+
+          const largeArcFlag = slice.value > 50 ? 1 : 0
+          const pathData = [
+            `M ${radius} ${radius}`,
+            `L ${radius + startX} ${radius + startY}`,
+            `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${radius + endX} ${radius + endY}`,
+            'Z'
+          ].join(' ')
+
+          // Alejar el texto hacia los bordes (0.72) para dar más espacio a las porciones chicas
+          const labelX = radius + Math.cos(2 * Math.PI * midPercent) * (radius * 0.72)
+          const labelY = radius + Math.sin(2 * Math.PI * midPercent) * (radius * 0.72)
+
           return (
             <g key={slice.name}>
-              <circle cx={radius} cy={radius} r={radius} fill={slice.color} />
-              <text
-                x={radius}
-                y={radius}
-                fill="#000000"
-                fontSize="11"
-                fontWeight="900"
-                textAnchor="middle"
-                dominantBaseline="central"
-                transform={`rotate(90, ${radius}, ${radius})`}
-                style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: '3px', strokeLinejoin: 'round' }}
-              >
-                {slice.name} 100%
-              </text>
+              <path d={pathData} fill={slice.color} stroke="#ffffff" strokeWidth="1.5" />
+
+              {/* Umbral bajado a 5% para asegurar que se impriman todas las etiquetas relevantes */}
+              {slice.value > 5 && (
+                <text
+                  x={labelX}
+                  y={labelY - 5}
+                  fill="#000000" // Texto negro
+                  fontSize="9" // Más grande
+                  fontWeight="900" // Extra Bold
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  transform={`rotate(90, ${labelX}, ${labelY})`}
+                  // Borde blanco por detrás del texto para contraste perfecto
+                  style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: '3px', strokeLinejoin: 'round' }}
+                >
+                  <tspan x={labelX} dy="0">{slice.name}</tspan>
+                  <tspan x={labelX} dy="11">{Math.round(slice.value)}%</tspan>
+                </text>
+              )}
             </g>
           )
-        }
-
-        const [startX, startY] = getCoords(cumulativePercent / 100)
-        const midPercent = (cumulativePercent + slice.value / 2) / 100
-        cumulativePercent += slice.value
-        const [endX, endY] = getCoords(cumulativePercent / 100)
-
-        const largeArcFlag = slice.value > 50 ? 1 : 0
-        const pathData = [
-          `M ${radius} ${radius}`,
-          `L ${radius + startX} ${radius + startY}`,
-          `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${radius + endX} ${radius + endY}`,
-          'Z'
-        ].join(' ')
-
-        // Alejar el texto hacia los bordes (0.72) para dar más espacio a las porciones chicas
-        const labelX = radius + Math.cos(2 * Math.PI * midPercent) * (radius * 0.72)
-        const labelY = radius + Math.sin(2 * Math.PI * midPercent) * (radius * 0.72)
-
-        return (
-          <g key={slice.name}>
-            <path d={pathData} fill={slice.color} stroke="#ffffff" strokeWidth="1.5" />
-            
-            {/* Umbral bajado a 5% para asegurar que se impriman todas las etiquetas relevantes */}
-            {slice.value > 5 && (
-              <text
-                x={labelX}
-                y={labelY - 5}
-                fill="#000000" // Texto negro
-                fontSize="9" // Más grande
-                fontWeight="900" // Extra Bold
-                textAnchor="middle"
-                dominantBaseline="central"
-                transform={`rotate(90, ${labelX}, ${labelY})`}
-                // Borde blanco por detrás del texto para contraste perfecto
-                style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: '3px', strokeLinejoin: 'round' }} 
-              >
-                <tspan x={labelX} dy="0">{slice.name}</tspan>
-                <tspan x={labelX} dy="11">{Math.round(slice.value)}%</tspan>
-              </text>
-            )}
-          </g>
-        )
         })}
       </svg>
     </div>
@@ -240,11 +240,11 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
 
   const haberesRemunerativos = datos.haberes.filter((concepto) => {
     const codigo = Number(concepto.codigo)
-    return codigo < 2200 || codigo > 2299
+    return !esConceptoNoRemunerativo(codigo)
   })
   const haberesNoRemunerativos = datos.haberes.filter((concepto) => {
     const codigo = Number(concepto.codigo)
-    return codigo >= 2200 && codigo <= 2299
+    return esConceptoNoRemunerativo(codigo)
   })
 
   const renderFilaConcepto = (concepto: typeof datos.haberes[number], indice: number, esDescuento = false) => (
@@ -337,22 +337,22 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
               </td>
             </tr>
             <tr className="border-b border-gray-300">
-              <td className="p-1.5 border-r border-gray-300 align-top">
+              <td className="p-1.5 border-r border-gray-300 align-top" style={{ width: '35%' }}>
                 <span className="block text-[8px] text-gray-500 uppercase font-bold">Liquidación</span>
                 <span className="font-semibold">{liquidacion?.IN_DESCRIP || 'MENSUAL'}</span>
               </td>
-              <td className="p-1.5 border-r border-gray-300 align-top">
-                <span className="block text-[8px] text-gray-500 uppercase font-bold">Período Abonado</span>
-                <span className="font-semibold">{liquidacion?.IN_ABREVIA || '-'}</span>
-              </td>
-              <td className="p-1.5 align-top" colSpan={2}>
+              <td className="p-1.5 border-r border-gray-300 align-top" style={{ width: '40%' }}>
                 <span className="block text-[8px] text-gray-500 uppercase font-bold">Categoría</span>
                 <span className="font-semibold">{categoriaEmpleado}</span>
+              </td>
+              <td className="p-1.5 align-top" style={{ width: '25%' }}>
+                <span className="block text-[8px] text-gray-500 uppercase font-bold">Sueldo Bruto</span>
+                <span className="font-semibold">${fmt(datos.sueldoBruto)}</span>
               </td>
             </tr>
             <tr className="bg-gray-50/70">
               <td className="p-1.5 border-r border-gray-300 align-top">
-                <span className="block text-[8px] text-gray-600 uppercase font-bold">Último Pago Cargas Sociales</span>
+                <span className="block text-[8px] text-gray-600 uppercase font-bold">Fecha Pago Aportes</span>
                 <span className="font-medium text-[10px]">{datosDeposito?.fechaUltimoPago || '-'}</span>
               </td>
               <td className="p-1.5 border-r border-gray-300 align-top">
@@ -413,6 +413,42 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
           </tr>
         </tbody>
       </table>
+
+      <div className="border border-black mb-2">
+        <div className="bg-gray-100 border-b border-black px-2 py-1 text-[9px] font-bold uppercase tracking-wide">
+          COMPOSICIÓN SALARIAL Y COSTO EMPLEADOR
+        </div>
+        <table className="w-full border-collapse text-[10px]" style={{ tableLayout: 'fixed' }}>
+          <tbody>
+            <tr className="border-b border-gray-300">
+              <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
+                <span className="block text-[8px] text-gray-500 uppercase font-bold">Remunerativo</span>
+                <span className="font-bold">${fmt(datos.totalHaberesRemunerativos)}</span>
+              </td>
+              <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
+                <span className="block text-[8px] text-gray-500 uppercase font-bold">No Remunerativo</span>
+                <span className="font-bold">${fmt(datos.totalHaberesNoRemunerativos)}</span>
+              </td>
+              <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
+                <span className="block text-[8px] text-gray-500 uppercase font-bold">Descuentos</span>
+                <span className="font-bold">${fmt(datos.totalDescuentos)}</span>
+              </td>
+              <td className="p-1.5" style={{ width: '25%' }}>
+                <span className="block text-[8px] text-gray-500 uppercase font-bold">Sueldo Bruto</span>
+                <span className="font-bold">${fmt(datos.sueldoBruto)}</span>
+              </td>
+            </tr>
+            <tr>
+              <td className="p-1.5 border-r border-gray-300 font-bold" colSpan={2}>
+                Subtotal Contribuciones Empleador: ${fmt(datos.subtotalContribucionesEmpleador)}
+              </td>
+              <td className="p-1.5 font-bold" colSpan={2}>
+                Costo Total Empleador: ${fmt(datos.costoTotalEmpleador)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <div className="border border-black p-2 mb-2 bg-gray-50 text-[10px]">
         Son: <span className="font-bold">{letrasFormateadas}</span>

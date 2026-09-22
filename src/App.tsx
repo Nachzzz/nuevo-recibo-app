@@ -189,11 +189,6 @@ export default function App() {
     setIdLiqSeleccionada(idLiq)
     setLegajoSeleccionado('')
 
-    const liqElegida = liquidaciones.find((l) => l.IN_IDENTIF === idLiq)
-    if (liqElegida?.IN_ABREVIA) {
-      setPeriodoPagado(String(liqElegida.IN_ABREVIA).trim())
-    }
-
     const res = await window.api.obtenerMovimientos({ rutaCarpeta, idLiquidacion: idLiq })
     if (res.exito && res.movimientos) {
       setMovimientos(res.movimientos)

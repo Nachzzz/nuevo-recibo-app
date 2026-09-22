@@ -14,6 +14,9 @@ export interface DatosReciboProcesados {
   totalHaberes: number
   totalDescuentos: number
   netoAPercibir: number
+  sueldoBruto: number
+  subtotalContribucionesEmpleador: number
+  costoTotalEmpleador: number
   cuotaSindicato: number
   cargasSociales: {
     seguridadSocial: { trabajador: number; empleador: number; total: number }
@@ -23,6 +26,9 @@ export interface DatosReciboProcesados {
     scvo: { trabajador: number; empleador: number; total: number }
   }
 }
+
+export const esConceptoNoRemunerativo = (codigo: number): boolean =>
+  (codigo >= 2200 && codigo <= 2299) || codigo === 512 || codigo === 514
 
 export const parsearFechaDBF = (val: any): Date | null => {
   if (!val) return null
@@ -149,7 +155,7 @@ export function procesarLiquidacionEmpleado(
     if (codNum >= 1 && codNum < 4000) {
       if (total > 0) {
         haberes.push({ codigo: codStr, descripcion, cantidad, base, total })
-        if (codNum >= 2200 && codNum <= 2299) {
+        if (esConceptoNoRemunerativo(codNum)) {
           totalHaberesNoRem += total
         } else {
           totalHaberesRem += total
@@ -174,6 +180,8 @@ export function procesarLiquidacionEmpleado(
 
   const totalHab = totalHaberesRem + totalHaberesNoRem
   const cuotaSindicatoExtraida = totalHab > 0 ? totalHab * 0.02 : 0
+  const subtotalContribucionesEmpleador =
+    segSocEmpleador + osEmpleador + inssjpEmpleador + artEmpleador + scvoEmpleador
 
   if (cuotaSindicatoExtraida > 0) {
     descuentos.push({
@@ -194,6 +202,9 @@ export function procesarLiquidacionEmpleado(
     totalHaberes: totalHab,
     totalDescuentos: totalDesc,
     netoAPercibir: totalHab - totalDesc,
+    sueldoBruto: totalHab,
+    subtotalContribucionesEmpleador,
+    costoTotalEmpleador: totalHab + subtotalContribucionesEmpleador,
     cuotaSindicato: cuotaSindicatoExtraida,
     cargasSociales: {
       seguridadSocial: { trabajador: segSocTrabajador, empleador: segSocEmpleador, total: segSocTrabajador + segSocEmpleador },
