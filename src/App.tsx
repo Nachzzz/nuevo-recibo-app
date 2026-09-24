@@ -27,9 +27,8 @@ export default function App() {
   const hoyStr = new Date().toISOString().split('T')[0]
   const [fechaUltimoPago, setFechaUltimoPago] = useState<string>(hoyStr)
   const [periodoPagado, setPeriodoPagado] = useState<string>('')
-  const [bancoPagadoCon, setBancoPagadoCon] = useState<string>('')
-  const [fechaIngresoEmpleado, setFechaIngresoEmpleado] = useState<string>('')
-  const [usarFechaIngresoManual, setUsarFechaIngresoManual] = useState<boolean>(false)
+  const [bancoCargasSociales, setBancoCargasSociales] = useState<string>('')
+  const [bancoPagoSueldo, setBancoPagoSueldo] = useState<string>('')
   const [mostrarCodigo, setMostrarCodigo] = useState<boolean>(true)
 
   // Estados para el Modal del CUIT (Solución al prompt de Electron)
@@ -139,7 +138,10 @@ export default function App() {
           return { legajo: empleado.EM_CODIGO, campoUsado: empleado.CATEGORIA_CAMPO, codigoCategoria: empleado.CATEGORIA_CODIGO, categoria: empleado.CATEGORIA_NOMBRE, datosCategoria }
         }))
         console.debug('[DBF] Claves de liquidación:', liquidacionesOrdenadas[0] ? Object.keys(liquidacionesOrdenadas[0]) : [])
-        if (bancosParsed.length > 0) setBancoPagadoCon(bancosParsed[0].valor)
+        if (bancosParsed.length > 0) {
+          setBancoCargasSociales(bancosParsed[0].valor)
+          setBancoPagoSueldo(bancosParsed[0].valor)
+        }
 
         if (res.conceptos && res.conceptos.length > 0) {
           const map: Record<string, string> = {}
@@ -262,8 +264,6 @@ export default function App() {
         conceptosMap,
         emp,
         liquidacionActual?.IN_FECHA || new Date(),
-        fechaIngresoEmpleado,
-        usarFechaIngresoManual
       );
       
       return {
@@ -291,7 +291,7 @@ export default function App() {
     const fechaPagoArca = fechaUltimoPago.replace(/-/g, '');
     
     // Mapeo exhaustivo para encontrar el CUIT
-    const cuitBase = empresa?.EM_CUIT || empresa?.CUIT || empresa?.PR_CUIT || empresa?.EMP_CUIT || empresa?.EM_RUT || empresa?.EM_NROCUI || empresa?.EM_IDENTIF || '';
+    const cuitBase = empresa?.EM_CUIT || empresa?.CUIT || empresa?.EM_RUC || empresa?.PR_CUIT || empresa?.EMP_CUIT || empresa?.EM_RUT || empresa?.EM_NROCUI || empresa?.EM_IDENTIF || '';
     let cuitArca = String(cuitBase).replace(/\D/g, '');
 
     // Si el CUIT no existe en la base o es inválido, lanzamos el Modal de React en vez del prompt de Electron
@@ -340,20 +340,19 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
       conceptosMap,
       empleadoActual,
       liquidacionActual?.IN_FECHA || new Date(),
-      fechaIngresoEmpleado,
-      usarFechaIngresoManual
     )
   : null
   
   // Calculamos el CUIT para mostrarlo en el header (Usa el manual si lo llenaron)
-  const cuitBaseHeader = empresa?.EM_CUIT || empresa?.CUIT || empresa?.PR_CUIT || empresa?.EMP_CUIT || empresa?.EM_RUT || empresa?.EM_NROCUI || empresa?.EM_IDENTIF;
+  const cuitBaseHeader = empresa?.EM_CUIT || empresa?.CUIT || empresa?.EM_RUC || empresa?.PR_CUIT || empresa?.EMP_CUIT || empresa?.EM_RUT || empresa?.EM_NROCUI || empresa?.EM_IDENTIF;
   const cuitEmpresaVisual = cuitBaseHeader ? cuitBaseHeader : (cuitManual || 'S/D');
 
   const datosDepositoObj: DatosDepositoSocial = {
     fechaPagoSueldo: formatearFechaDBFVisual(liquidacionActual?.IN_FECHA),
     fechaUltimoPago: formatearFechaVisual(fechaUltimoPago),
     periodoPagado: periodoPagado,
-    banco: bancoPagadoCon
+    bancoCargasSociales,
+    bancoPagoSueldo,
   }
   
   return (
@@ -502,26 +501,6 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Fecha de Ingreso del Empleado</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={usarFechaIngresoManual}
-                  onChange={(e) => setUsarFechaIngresoManual(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500"
-                />
-                <span className="text-[11px] text-slate-300">Tildar si utiliza fecha de ingreso en el recibo (Antigüedad)</span>
-              </div>
-              <input
-                type="date"
-                value={fechaIngresoEmpleado}
-                onChange={(e) => setFechaIngresoEmpleado(e.target.value)}
-                disabled={!usarFechaIngresoManual || !!procesandoLote}
-                className="mt-2 w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
-              />
-            </div>
-
-            <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1">Diseño del recibo</label>
               <label className="flex items-center gap-2 mt-3 text-[11px] text-slate-300">
                 <input
@@ -562,11 +541,11 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Pagado con</label>
+                <label className="block text-xs text-slate-400 mb-1">Pagado con (Cargas Sociales)</label>
                 {bancosDisponibles.length > 0 ? (
                   <select
-                    value={bancoPagadoCon}
-                    onChange={(e) => setBancoPagadoCon(e.target.value)}
+                    value={bancoCargasSociales}
+                    onChange={(e) => setBancoCargasSociales(e.target.value)}
                     disabled={!!procesandoLote}
                     className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
                   >
@@ -577,8 +556,31 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
                 ) : (
                   <input
                     type="text"
-                    value={bancoPagadoCon}
-                    onChange={(e) => setBancoPagadoCon(e.target.value)}
+                    value={bancoCargasSociales}
+                    onChange={(e) => setBancoCargasSociales(e.target.value)}
+                    disabled={!!procesandoLote}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
+                  />
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Banco pago de sueldo</label>
+                {bancosDisponibles.length > 0 ? (
+                  <select
+                    value={bancoPagoSueldo}
+                    onChange={(e) => setBancoPagoSueldo(e.target.value)}
+                    disabled={!!procesandoLote}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
+                  >
+                    {bancosDisponibles.map((b, i) => (
+                      <option key={i} value={b.valor}>{b.etiqueta}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={bancoPagoSueldo}
+                    onChange={(e) => setBancoPagoSueldo(e.target.value)}
                     disabled={!!procesandoLote}
                     className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500 disabled:opacity-50"
                   />
@@ -654,8 +656,6 @@ const datosRecibo = legajoSeleccionado && movimientos.length > 0
                 liquidacion={liquidacionActual}
                 datos={datosRecibo}
                 datosDeposito={datosDepositoObj}
-                fechaIngresoManual={fechaIngresoEmpleado}
-                usarFechaIngresoManual={usarFechaIngresoManual}
                 mostrarCodigo={mostrarCodigo}
               />
             </div>

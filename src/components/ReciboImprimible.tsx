@@ -1,11 +1,12 @@
-import { DatosReciboProcesados, esConceptoNoRemunerativo, formatearFechaVisual } from '../utils/reciboMapper'
+import { DatosReciboProcesados, calcularAniosAntiguedad, esConceptoNoRemunerativo, formatearFechaVisual } from '../utils/reciboMapper'
 import { numeroALetras } from '../utils/numeroALetras'
 
 export interface DatosDepositoSocial {
   fechaPagoSueldo: string
   fechaUltimoPago: string
   periodoPagado: string
-  banco: string
+  bancoCargasSociales: string
+  bancoPagoSueldo: string
 }
 
 interface Props {
@@ -14,8 +15,6 @@ interface Props {
   liquidacion: any
   datos: DatosReciboProcesados
   datosDeposito?: DatosDepositoSocial
-  fechaIngresoManual?: string
-  usarFechaIngresoManual?: boolean
   mostrarCodigo?: boolean
 }
 
@@ -197,7 +196,7 @@ function GraficoCargasSVG({ sueldoNeto, seguridadSocialEmpleador, costoSindical,
 }
 // -----------------------------------------------------------
 
-export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosDeposito, fechaIngresoManual, usarFechaIngresoManual = false, mostrarCodigo = true }: Props) {
+export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosDeposito, mostrarCodigo = true }: Props) {
   const nombreEmpresa = String(empresa?.EM_NOMBRE || '').trim()
   const cuitEmpresa = detectarCuitEmpresa(empresa)
   const { direccion, cp, partido, provincia } = obtenerDomicilioFiscalEmpresa(empresa)
@@ -213,11 +212,8 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
     empleado?.EM_DESCCAT || empleado?.EM_CODCAT || empleado?.EM_CODCATE || ''
   ).trim() || 'S/D'
 
-  const rawIngreso = usarFechaIngresoManual ? (fechaIngresoManual || '') : ''
-  const rawReconocida = usarFechaIngresoManual ? (fechaIngresoManual || '') : ''
-
-  const fechaIngresoReal = formatearFechaVisual(rawIngreso)
-  const fechaIngresoReconocida = formatearFechaVisual(rawReconocida)
+  const fechaIngreso = formatearFechaVisual(datos.fechaIngresoEmpleado)
+  const antiguedad = calcularAniosAntiguedad(datos.fechaIngresoEmpleado, liquidacion?.IN_FECHA)
 
   const letras = numeroALetras(datos.netoAPercibir)
   const letrasFormateadas = letras.charAt(0).toUpperCase() + letras.slice(1)
@@ -313,22 +309,22 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
                 <span className="font-bold text-[11px]">{cuilEmpleado}</span>
               </td>
               {/* Bloque para mostrar ambas fechas de ingreso formateadas */}
-              {usarFechaIngresoManual && (fechaIngresoReal || fechaIngresoReconocida) && (
+              {datos.fechaIngresoEmpleado && (
                 <td className="p-1.5 border-r border-gray-300 align-top text-[10px]" style={{ width: '28%' }}>
                   <div className="flex justify-between items-center">
                     <span className="text-[8px] text-gray-500 uppercase font-bold">Ingreso:</span>
-                    <span className="font-semibold">{fechaIngresoReal}</span>
+                    <span className="font-semibold">{fechaIngreso}</span>
                   </div>
                   <div className="flex justify-between items-center mt-0.5">
-                    <span className="text-[8px] text-gray-500 uppercase font-bold">Reconocida:</span>
-                    <span className="font-semibold">{fechaIngresoReconocida}</span>
+                    <span className="text-[8px] text-gray-500 uppercase font-bold">Antigüedad:</span>
+                    <span className="font-semibold">{antiguedad} {antiguedad === 1 ? 'año' : 'años'}</span>
                   </div>
                 </td>
               )}
-              {!usarFechaIngresoManual && (
+              {!datos.fechaIngresoEmpleado && (
                 <td className="p-1.5 border-r border-gray-300 align-top" style={{ width: '28%' }}>
                   <span className="block text-[8px] text-gray-500 uppercase font-bold">Antigüedad</span>
-                  <span className="font-semibold text-[10px] text-gray-500">No aplica</span>
+                  <span className="font-semibold text-[10px] text-gray-500">Fecha no disponible</span>
                 </td>
               )}
               <td className="p-1.5 align-top" style={{ width: '15%' }}>
@@ -361,8 +357,43 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
               </td>
               <td className="p-1.5 align-top" colSpan={2}>
                 <span className="block text-[8px] text-gray-600 uppercase font-bold">Pagado con / Banco</span>
-                <span className="font-medium text-[10px] truncate block">{datosDeposito?.banco || '-'}</span>
+                <span className="font-medium text-[10px] truncate block">{datosDeposito?.bancoCargasSociales || '-'}</span>
               </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="border border-black mb-2">
+        <table className="w-full border-collapse text-[10px]" style={{ tableLayout: 'fixed' }}>
+          <tbody>
+            <tr className="bg-[#2f5597] text-white border-b border-black">
+              <td className="p-1.5 text-center font-bold uppercase" colSpan={3}>
+                Costo Total Empleador
+              </td>
+              <td className="p-1.5 text-right font-bold" style={{ width: '20%' }}>
+                ${fmt(datos.costoTotalEmpleador)}
+              </td>
+            </tr>
+            <tr className="bg-[#595959] text-white border-b border-black text-[9px] uppercase">
+              <th className="p-1 text-left" style={{ width: '52%' }}>Concepto</th>
+              <th className="p-1 text-right" style={{ width: '13%' }}>Unidad</th>
+              <th className="p-1 text-right" style={{ width: '15%' }}>Base</th>
+              <th className="p-1 text-right" style={{ width: '20%' }}>Monto</th>
+            </tr>
+            {datos.contribucionesEmpleador.slice().sort((a, b) => Number(a.codigo) - Number(b.codigo)).map((concepto, indice) => (
+              <tr key={`contribucion-empleador-${concepto.codigo}-${indice}`} className="border-b border-gray-200">
+                <td className="p-1">{concepto.descripcion}</td>
+                <td className="p-1 text-right font-mono">{formatearCantidad(concepto.cantidad)}</td>
+                <td className="p-1 text-right font-mono text-[#2f5597]">{fmt(concepto.base)}</td>
+                <td className="p-1 text-right font-mono">{fmt(concepto.total)}</td>
+              </tr>
+            ))}
+            <tr className="bg-[#d9e7f2]">
+              <td className="p-1.5 text-center font-bold uppercase" colSpan={3}>
+                Subtotal Contribuciones Empleador
+              </td>
+              <td className="p-1.5 text-right font-bold">${fmt(datos.subtotalContribucionesEmpleador)}</td>
             </tr>
           </tbody>
         </table>
@@ -414,47 +445,34 @@ export function ReciboImprimible({ empresa, empleado, liquidacion, datos, datosD
         </tbody>
       </table>
 
-      <div className="border border-black mb-2">
-        <div className="bg-gray-100 border-b border-black px-2 py-1 text-[9px] font-bold uppercase tracking-wide">
-          COMPOSICIÓN SALARIAL Y COSTO EMPLEADOR
-        </div>
-        <table className="w-full border-collapse text-[10px]" style={{ tableLayout: 'fixed' }}>
-          <tbody>
-            <tr className="border-b border-gray-300">
-              <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
-                <span className="block text-[8px] text-gray-500 uppercase font-bold">Remunerativo</span>
-                <span className="font-bold">${fmt(datos.totalHaberesRemunerativos)}</span>
-              </td>
-              <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
-                <span className="block text-[8px] text-gray-500 uppercase font-bold">No Remunerativo</span>
-                <span className="font-bold">${fmt(datos.totalHaberesNoRemunerativos)}</span>
-              </td>
-              <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
-                <span className="block text-[8px] text-gray-500 uppercase font-bold">Descuentos</span>
-                <span className="font-bold">${fmt(datos.totalDescuentos)}</span>
-              </td>
-              <td className="p-1.5" style={{ width: '25%' }}>
-                <span className="block text-[8px] text-gray-500 uppercase font-bold">Sueldo Bruto</span>
-                <span className="font-bold">${fmt(datos.sueldoBruto)}</span>
-              </td>
-            </tr>
-            <tr>
-              <td className="p-1.5 border-r border-gray-300 font-bold" colSpan={2}>
-                Subtotal Contribuciones Empleador: ${fmt(datos.subtotalContribucionesEmpleador)}
-              </td>
-              <td className="p-1.5 font-bold" colSpan={2}>
-                Costo Total Empleador: ${fmt(datos.costoTotalEmpleador)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <table className="w-full border border-black mb-2 bg-gray-50 text-[10px]" style={{ tableLayout: 'fixed' }}>
+        <tbody>
+          <tr>
+            <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
+              <span className="block text-[8px] text-gray-500 uppercase font-bold">Remunerativo</span>
+              <span className="font-bold">${fmt(datos.totalHaberesRemunerativos)}</span>
+            </td>
+            <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
+              <span className="block text-[8px] text-gray-500 uppercase font-bold">No Remunerativo</span>
+              <span className="font-bold">${fmt(datos.totalHaberesNoRemunerativos)}</span>
+            </td>
+            <td className="p-1.5 border-r border-gray-300" style={{ width: '25%' }}>
+              <span className="block text-[8px] text-gray-500 uppercase font-bold">Descuentos</span>
+              <span className="font-bold">${fmt(datos.totalDescuentos)}</span>
+            </td>
+            <td className="p-1.5" style={{ width: '25%' }}>
+              <span className="block text-[8px] text-gray-500 uppercase font-bold">Sueldo Bruto</span>
+              <span className="font-bold">${fmt(datos.sueldoBruto)}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
       <div className="border border-black p-2 mb-2 bg-gray-50 text-[10px]">
         Son: <span className="font-bold">{letrasFormateadas}</span>
         <div className="mt-1.5 pt-1.5 border-t border-gray-300 flex flex-wrap gap-x-6 gap-y-1">
           <span><span className="font-bold">Fecha de Pago:</span> {datosDeposito?.fechaPagoSueldo || '-'}</span>
-          <span><span className="font-bold">Lugar de Pago:</span> {datosDeposito?.banco || '-'}</span>
+          <span><span className="font-bold">Lugar de Pago:</span> {datosDeposito?.bancoPagoSueldo || '-'}</span>
         </div>
       </div>
 

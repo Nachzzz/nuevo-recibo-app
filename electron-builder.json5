@@ -3,7 +3,7 @@
   "appId": "com.lineup.recibos-memory",
   "productName": "Generador de Recibos Memory",
   "directories": {
-    "output": "release"
+    "output": "release-nueva"
   },
   "files": [
     "dist",

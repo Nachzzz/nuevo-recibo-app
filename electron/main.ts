@@ -128,6 +128,11 @@ function leerTablaSiExiste(carpeta: string, nombreTabla: string) {
   }
 }
 
+function obtenerValorPorNombre(record: any, nombres: string[]): any {
+  const clave = Object.keys(record).find((key) => nombres.includes(key.toUpperCase()))
+  return clave ? record[clave] : undefined
+}
+
 ipcMain.handle('dialog:seleccionarCarpeta', async () => {
   if (!win) return null
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
@@ -144,13 +149,14 @@ ipcMain.handle('empresa:cargarDatos', async (_: any, rutaCarpeta: string) => {
       .filter((archivo: string) => archivo.toLowerCase().endsWith('.dbf'))
       .sort()
     const tablasRelevantes = tablasDbf.filter((archivo: string) =>
-      /^(empleado|categori|concepto|liquidac|movimien|empresa|provincia|ctasbanc)\.dbf$/i.test(archivo)
+      /^(empleado|activida|categori|concepto|liquidac|movimien|empresa|provincia|ctasbanc)\.dbf$/i.test(archivo)
     )
     console.debug('[DBF] Tablas relevantes disponibles:', tablasRelevantes)
 
     const empresa = leerTablaSiExiste(rutaCarpeta, 'empresa')
     const liquidaciones = leerTablaSiExiste(rutaCarpeta, 'liquidac')
     const empleados = leerTablaSiExiste(rutaCarpeta, 'empleado')
+    const actividades = leerTablaSiExiste(rutaCarpeta, 'activida')
     const categorias = leerTablaSiExiste(rutaCarpeta, 'categori')
     const provincias = leerTablaSiExiste(rutaCarpeta, 'provincia')
     const ctasbanc = leerTablaSiExiste(rutaCarpeta, 'ctasbanc')
@@ -181,13 +187,25 @@ ipcMain.handle('empresa:cargarDatos', async (_: any, rutaCarpeta: string) => {
       if (codigo && nombre) categoriasPorCodigo[codigo] = nombre
     })
 
+    const fechaIngresoPorEmpleado: Record<string, any> = {}
+    actividades.forEach((actividad: any) => {
+      const codigoEmpleado = obtenerValorPorNombre(actividad, ['AC_CODIGO', 'AC_CODIGOEMPLEADO', 'EM_CODIGO', 'CODIGO', 'LEGAJO'])
+      const fechaIngreso = obtenerValorPorNombre(actividad, ['AC_FECHING', 'AC_FECHAING', 'FECHAING', 'FECHA_INGRESO'])
+      if (codigoEmpleado !== undefined && fechaIngreso !== undefined && fechaIngreso !== null && String(fechaIngreso).trim() !== '') {
+        fechaIngresoPorEmpleado[String(Number(codigoEmpleado))] = fechaIngreso
+      }
+    })
+    console.debug('[DBF] Activida: registros de fecha de ingreso:', Object.keys(fechaIngresoPorEmpleado).length)
+
     const empleadosConCategoria = empleados.map((empleado: any) => {
       const codigoCategoria = empleado.TCA_CODIGO ?? empleado.EM_AF_CA
       const codigoNormalizado = String(codigoCategoria ?? '').trim()
+      const codigoEmpleado = String(Number(empleado.EM_CODIGO))
       return {
         ...empleado,
         CATEGORIA_CODIGO: codigoNormalizado,
-        CATEGORIA_NOMBRE: categoriasPorCodigo[codigoNormalizado] || ''
+        CATEGORIA_NOMBRE: categoriasPorCodigo[codigoNormalizado] || '',
+        FECHA_INGRESO_AUTOMATICA: fechaIngresoPorEmpleado[codigoEmpleado] || ''
       }
     })
 

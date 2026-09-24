@@ -5,7 +5,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 5mm;
   }
 
   html, body, #root {
@@ -35,5 +35,21 @@
     margin: 0 auto !important;
     width: 100% !important;
     max-width: 100% !important;
+    zoom: 0.82;
+  }
+
+  #area-recibo table,
+  #area-recibo tr,
+  #area-recibo td,
+  #area-recibo th {
+    break-inside: avoid;
+  }
+
+  #area-recibo .min-h-\[270px\] {
+    min-height: 0 !important;
+  }
+
+  #area-recibo .mt-10 {
+    margin-top: 1rem !important;
   }
 }

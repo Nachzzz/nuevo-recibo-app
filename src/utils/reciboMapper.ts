@@ -15,8 +15,10 @@ export interface DatosReciboProcesados {
   totalDescuentos: number
   netoAPercibir: number
   sueldoBruto: number
+  fechaIngresoEmpleado: any
   subtotalContribucionesEmpleador: number
   costoTotalEmpleador: number
+  contribucionesEmpleador: ConceptoRecibo[]
   cuotaSindicato: number
   cargasSociales: {
     seguridadSocial: { trabajador: number; empleador: number; total: number }
@@ -92,12 +94,24 @@ export const calcularAniosAntiguedad = (
 }
 
 // Extracción directa de las columnas oficiales de Memory Worky
-export const obtenerFechaEmpleadoFlexible = (empleado: any, _tipo: 'ingreso' | 'reconocida'): any => {
+export const obtenerFechaEmpleadoFlexible = (empleado: any, _tipo: 'ingreso' | 'reconocida' = 'ingreso'): any => {
   if (!empleado) return ''
 
-  // NOTA: Memory Worky no almacena la fecha de ingreso en la tabla de empleados
-  // Solo disponibles: EM_FECHNAC (fecha de nacimiento)
-  // Por ahora, retorna vacío para mantener compatibilidad
+  const clavesIngreso = [
+    'FECHA_INGRESO_AUTOMATICA',
+    'EM_FECHING', 'EM_FECING', 'EM_FECHAING', 'EM_FECHA_INGRESO',
+    'EM_INGRESO', 'EM_FECALT', 'EM_FECHAALTA', 'EM_ALTA',
+    'FECHA_INGRESO', 'FECHAINGRESO', 'FECHA_ALTA', 'FECHAALTA',
+  ]
+  const claveEncontrada = clavesIngreso.find((clave) => empleado[clave] !== undefined && empleado[clave] !== null && String(empleado[clave]).trim() !== '')
+  if (claveEncontrada) return empleado[claveEncontrada]
+
+  const clavePorNombre = Object.keys(empleado).find((clave) => {
+    const nombre = clave.toUpperCase()
+    return /(INGR|ALTA)/.test(nombre) && !/(NAC|BAJA|ANTIGU)/.test(nombre)
+  })
+  if (clavePorNombre) return empleado[clavePorNombre]
+
   return ''
 }
 
@@ -105,13 +119,10 @@ export function procesarLiquidacionEmpleado(
   movimientos: any[],
   legajo: string,
   conceptosMap: Record<string, string>,
-  _empleadoDBF: any,
+  empleadoDBF: any,
   fechaLiquidacion: any,
-  fechaIngresoManual?: string,
-  usarFechaIngresoManual: boolean = false,
 ): DatosReciboProcesados {
-  const fechaIngreso = usarFechaIngresoManual ? (fechaIngresoManual || '') : ''
-  const rawReconocida = usarFechaIngresoManual ? fechaIngreso : ''
+  const fechaIngreso = obtenerFechaEmpleadoFlexible(empleadoDBF, 'ingreso')
 
   const movs = movimientos.filter(
     (m) => String(Number(m.EM_CODIGO)) === String(Number(legajo))
@@ -119,6 +130,7 @@ export function procesarLiquidacionEmpleado(
 
   const haberes: ConceptoRecibo[] = []
   const descuentos: ConceptoRecibo[] = []
+  const contribucionesEmpleador: ConceptoRecibo[] = []
 
   let totalHaberesRem = 0
   let totalHaberesNoRem = 0
@@ -141,9 +153,14 @@ export function procesarLiquidacionEmpleado(
     const cantidad = Number(m.MV_CANTIDA) || 0
     let descripcion = conceptosMap[codStr] || `Concepto ${codStr}`
 
-    if (codNum === 701 && usarFechaIngresoManual && rawReconocida) {
-      const anios = calcularAniosAntiguedad(rawReconocida, fechaLiquidacion)
-      console.log(`[MAPPER] Concepto 701 detectado. Años calculados: ${anios} usando fecha:`, rawReconocida)
+    if (!conceptosMap[codStr] && codNum === 9910) descripcion = 'ART + FFEP'
+    if (!conceptosMap[codStr] && codNum === 9911) descripcion = 'Contribución Jubilación / SIPA'
+    if (!conceptosMap[codStr] && codNum === 9912) descripcion = 'Contribución Obra Social'
+    if (!conceptosMap[codStr] && codNum === 9913) descripcion = 'SCVO'
+
+    if (codNum === 701 && fechaIngreso) {
+      const anios = calcularAniosAntiguedad(fechaIngreso, fechaLiquidacion)
+      console.log(`[MAPPER] Concepto 701 detectado. Años calculados: ${anios} usando fecha:`, fechaIngreso)
       
       const leyendaAdicional = anios > 10 
         ? `(1% x ${anios} años + 1% adicional)` 
@@ -171,6 +188,9 @@ export function procesarLiquidacionEmpleado(
         if (codNum === 5020 || codNum === 5022) osTrabajador += total
       }
     } else if (codNum >= 9910 && codNum <= 9999) {
+      if (total > 0) {
+        contribucionesEmpleador.push({ codigo: codStr, descripcion, cantidad, base, total })
+      }
       if (codNum === 9911) segSocEmpleador += total
       if (codNum === 9912) osEmpleador += total
       if (codNum === 9910) artEmpleador += total
@@ -203,8 +223,10 @@ export function procesarLiquidacionEmpleado(
     totalDescuentos: totalDesc,
     netoAPercibir: totalHab - totalDesc,
     sueldoBruto: totalHab,
+    fechaIngresoEmpleado: fechaIngreso,
     subtotalContribucionesEmpleador,
     costoTotalEmpleador: totalHab + subtotalContribucionesEmpleador,
+    contribucionesEmpleador,
     cuotaSindicato: cuotaSindicatoExtraida,
     cargasSociales: {
       seguridadSocial: { trabajador: segSocTrabajador, empleador: segSocEmpleador, total: segSocTrabajador + segSocEmpleador },

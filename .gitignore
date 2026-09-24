@@ -30,6 +30,7 @@ release/
 release-final/
 release-final-2/
 release-new/
+release-nueva/
 .env
 
 # Ignorar la carpeta donde pusiste los DBF de Amiplast/Frutos
